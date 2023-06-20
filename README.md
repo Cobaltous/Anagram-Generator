@@ -1,7 +1,7 @@
 # Anagram-Generator
 A small program I made fresh out of college so I'd have something to display here.
 
-Run it with the standard javac and java commands to get it running, provide it as many words or phrases as you want, and then type "x" to exit. It only accepts characters found in the English alphabet and spaces.
+Run it with the standard javac and java commands to get it running, provide it with as many words or phrases as you want, and then type "x" to exit. It only accepts characters found in the English alphabet and spaces. Results should get spat out into files found in a /results folder it'll create.
 
 Optionally, also provide it with:
 
