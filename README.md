@@ -11,7 +11,7 @@ Optionally, also provide it with:
 
 "--genLimit (limit)" to cap the number of anagrams written to the results file.
 
-All of these should fall back to their defaults should something get entered wrong, and it'll also tell you it did that.
+All of these should fall back to their defaults should something get entered wrong, and it'll also tell you if that happens.
 
 Only begins to run poorly when you give it something using too many unqiue letters of the alphabet, which I'm trying to think of how to fix.
 This is also mentioned in the code file itself, but just to be extra clear:
