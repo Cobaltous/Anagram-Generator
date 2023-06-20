@@ -5,11 +5,13 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Scanner;
 //import java.util.Comparator;
 
@@ -25,14 +27,13 @@ import java.util.Scanner;
 			that number
 	
 	If any words can be made from the input, they should be able to divide the input's number
-		cleanly,no?
+		cleanly, no?
 
-		Thank you been-up-for-nine-hours-working-on-this-crackhead-brain, you were right.
-		Went from 10 words from "Todd Neller" every 15 seconds to 13666 in ~1/2 second.
+	Thank you been-up-for-nine-hours-working-on-this-crackhead-brain, you were right.
+	Went from 10 words from "Todd Neller" every 15 seconds to 13666 in ~1/2 second.
 		
-		(That'd be one of my professors at Gettysburg; he had a sign beside his door
-		displaying an anagram of his name: "Nerd? Do tell!" Pretty much what gave me
-		the idea to make this)
+	(That'd be one of my professors at Gettysburg; he had a sign beside his door displaying an
+	anagram of his name: "Nerd? Do tell!"; s'what gave me the idea to make this)
 		
 	--------
 	
@@ -67,6 +68,9 @@ public class AnagramGenerator {
 		quickFilename - supplementary file containing the words that can be created from the user's input and
 			a value corresponding to the letters contained within them, which themselves are mapped to prime
 			numbers so that, say, the value of "tin" == the value of "int"; stored alongside subdictionaries
+		dictUpdateFilename - name used for the file that stores the last time the dictionary file was modified;
+			if the dictionary file's ever changed in any way, the time stored here will indicate that it should
+			be reread
 		input - the user's input, eventually trimmmed of leading and trailing spaces
 		output - the name of the file containing the results produced from the user's input; named in the style
 			of "~(input).txt"
@@ -95,7 +99,8 @@ public class AnagramGenerator {
 			https://github.com/dwyl/english-words
 	*/
 	private static String alpha = "abcdefghijklmnopqrstuvwxyz ", dictFolder = "dicts",
-			dictFilename = "words_alpha", outFolder = "results", quickFilename = "quick", input, output;
+			dictFilename = "words_alpha.txt", outFolder = "results", quickFilename = "quick",
+			dictUpdateFilename = "dictUpdate", input, output;
 	private static int charLim = 48, genLim = 100000, numGenned;
 	private static long startTime, readDictStartTime, timeTaken;
 	private static HashMap<Character, Boolean> appear;
@@ -109,13 +114,57 @@ public class AnagramGenerator {
 		once the limit is hit.
 	*/
 	
-	/**
-	* Generates a .txt file containing as many anagrams able to be generated
-	* within an optionally specified limit; default is 100000, if unspecified.
-	* 
-	* @param  args 
-	*/
 	public static void main(String[] args) {
+		//This tries to take care of the options the user can launch this thing with
+		for(int i = 0; i < args.length; ++i) {
+			switch(args[i].toUpperCase()) {
+				case "--DICTNAME":
+					if(i + 1 < args.length) {
+						File readTest = new File(args[++i]);
+						if(readTest.exists()) {
+							dictFilename = args[i];
+							System.out.printf("Using dictionary file %s\n", dictFilename);
+						}
+						else {
+							System.err.printf("Dictionary %s does not exist. Trying default %s.\n", args[i], dictFilename);
+						}
+					}
+					else {
+						System.err.printf("Dictionary name not provided. Trying default %s.\n", dictFilename);
+					}
+					break;
+					
+				case "--CHARLIMIT":
+					if(i + 1 < args.length) {
+						try {
+							charLim = Integer.parseInt(args[++i]);
+							System.out.printf("Set charLimit to %s\n", args[i]);
+						}
+						catch(NumberFormatException e) {
+							System.err.println("charLimit unable to be parsed; provide an integer");
+						}
+					}
+					else {
+						System.err.printf("charLimit not provided. Using default %d.\n", charLim);
+					}
+					break;
+					
+				case "--GENLIMIT":
+					if(i + 1 < args.length) {
+						try {
+							genLim = Integer.parseInt(args[++i]);
+							System.out.printf("Set genLimit to %s\n", args[i]);
+						}
+						catch(NumberFormatException e) {
+							System.err.println("genLimit unable to be parsed; provide an integer");
+						}					
+					}
+					else {
+						System.err.printf("genLimit not provided. Using default %d.\n", genLim);
+					}
+			}
+			
+		}
 		Scanner scan = new Scanner(System.in);
 		while(scan != null) {
 			boolean valid = true;
@@ -134,8 +183,7 @@ public class AnagramGenerator {
 			}
 			//Prompts user for another input if theirs is too short after being trimmed
 			else if(input.length() < 2) {
-				System.err.println("You've gotta give me *something* to rearrange, man.");
-				System.out.println();
+				System.err.println("You've gotta give me *something* to rearrange, man.\n");
 				continue;
 			}
 			else {
@@ -162,8 +210,7 @@ public class AnagramGenerator {
 					this yourself.
 				*/
 				if(sb.length() > charLim) {
-					System.err.printf("Input must be %s characters or less.\n", charLim);
-					System.out.println();
+					System.err.printf("Input must be %s characters or less.\n\n", charLim);
 					continue;
 				}
 				input = sb.toString();
@@ -176,7 +223,7 @@ public class AnagramGenerator {
 			char c;
 			//This keeps track of the "mult value" of the input's characters
 			BigInteger mult = BigInteger.ONE;
-			dict = new Dictionary(dictFolder, dictFilename + ".txt");
+			dict = new Dictionary(dictFolder, dictFilename);
 			for(int i = 0; i < input.length(); ++i) {
 				c = input.charAt(i);
 				
@@ -203,17 +250,35 @@ public class AnagramGenerator {
 					dir.mkdir();
 				}
 				boolean needToRead = false;
-				//Check to see if the dictionary whose name is specified with dictFilename exists
-				File newDictCheck = new File('~' + dictFilename);
+				/*
+					Check to see if the dictionary whose name is specified with dictFilename exists;
+					doing this in a kind of janky way where the "last modified time" of the default or
+					given dictionary file is stored in the file named under dictUpdateFile.
+					
+				*/
+				File newDictCheck = new File(dictUpdateFilename);
 				if(newDictCheck.exists()) {
-					File charFile;
-					for(int i = 0; i < alpha.length() - 1; ++i) {
-						//If any of the lettered subdictionaries don't exist, read them in
-						charFile = new File(dict.getTxtFile(alpha.charAt(i)));
-						if(!charFile.exists()) {
-							needToRead = true;
+					Scanner update;
+					try {
+						update = new Scanner(newDictCheck);
+						if(!update.nextLine().equals(getModifiedTime(dictFilename))) {
+							update.close();
 							break;
 						}
+						update.close();
+						
+						File charFile;
+						for(int i = 0; i < alpha.length() - 1; ++i) {
+							//If any of the lettered subdictionaries don't exist, read them in
+							charFile = new File(dict.getTxtFile(alpha.charAt(i)));
+							if(!charFile.exists()) {
+								needToRead = true;
+								break;
+							}
+						}
+					}
+					catch (FileNotFoundException e) {
+						System.err.println("Couldn't find file containing last time dictionary was modified.");
 					}
 				}
 				//Only read dictionary anew if either of these are tripped
@@ -223,6 +288,9 @@ public class AnagramGenerator {
 						
 						dict.readDict();
 						newDictCheck.createNewFile();
+						FileWriter dictUpdateWriter = new FileWriter(dictUpdateFilename);
+						dictUpdateWriter.write(getModifiedTime(dictFilename));
+						dictUpdateWriter.close();
 						
 						System.out.printf("Finished sorting and making dictionary files in %d ms.\n",
 								System.currentTimeMillis() - readDictStartTime);
@@ -307,7 +375,6 @@ public class AnagramGenerator {
 			Main queue holding the states to be processed. Apparently faster as an ArrayDeque than
 			a LinkedList or Stack when used for DFS/BFS, respectively; I think it's right, from testing.
 		*/
-		//
 		ArrayDeque<State> queue = new ArrayDeque<State>();
 		
 		//HashMap mapping multValues to strings; "int" mV == "nit" mV, and are logged under "int" mV.
@@ -499,15 +566,12 @@ public class AnagramGenerator {
 							switch(curr.multValue.compareTo(key)) {
 								case 0: 
 									if(curr.multValue.equals(lastMult)) {
-										//Whole-word anagram exists; write all from m2S into results
 										for(String s : mult2Strs.get(key)) {
 											sb = new StringBuilder(s);
-											//Getting back what you put in wouldn't be fun, right?
 											if(!input.equals(sb.toString())) {
 												sb.append('\n');
 												resultWriter.write(sb.toString());
 												++numGenned;
-												//Check anagram generation limit; break if so
 												if(numGenned == genLim) {
 													queue = new ArrayDeque<State>();
 													break;
@@ -563,12 +627,15 @@ public class AnagramGenerator {
 			}
 		}
 	
-	public static String toString(List<Character> list) {
-		StringBuilder sb = new StringBuilder();
-		for(char c : list) {
-			sb.append(c);
+	//Gets the "last modified time" of a file with the given filename
+	private static String getModifiedTime(String filename) {
+		try {
+			return String.valueOf(Files.readAttributes(Path.of(filename), BasicFileAttributes.class).lastModifiedTime());
 		}
-		return sb.toString();
+		catch (IOException e) {
+			System.err.printf("Couldn't get modified time of %s.\n", filename);
+		}
+		return "";
 	}
 }
 
@@ -631,7 +698,7 @@ class Dictionary {
 	
 	public void readDict() {
 		try {
-			FileWriter writer = new FileWriter(getTxtFile(last));
+			FileWriter writer = new FileWriter(new File(getTxtFile(last)));
 			try {
 				System.out.println("Getting dict file " + dictFilename);
 				Scanner scan = new Scanner(new File(dictFilename));
@@ -685,14 +752,11 @@ class Dictionary {
 			}
 		}
 		catch (IOException e) {
-			System.err.println("IOE");
+			System.err.println("IOE in readDict()");
 		}
 	}
 	
-	protected void quicken(HashMap<Character, Boolean> appear, int inputLength, BigInteger inputMultVal) {
-		//Some jank because 
-		//
-		
+	protected void quicken(HashMap<Character, Boolean> appear, int inputLength, BigInteger inputMultVal) {		
 		/*
 			scan - a Scanner used to read the subdictionary files; if scan isn't initialized somewhere outside of the
 			upcoming for() loop, the scan.close() at the end of this method complains about it, so there's this jank
@@ -713,35 +777,40 @@ class Dictionary {
 		ArrayDeque<String> anagrams;
 
 		mult2Strs = new HashMap<BigInteger, ArrayDeque<String>>();
+		usableFromState = new HashMap<BigInteger, ArrayDeque<BigInteger>>();
 		
 		try {
 			//Get all letters that appear in the user's input
+			File chrFile;
 			for(char key : appear.keySet()) {
-				scan = new Scanner(new File(getTxtFile(key)));
-				while(scan.hasNext()) {
-					word = scan.nextLine();
-					//This'll probably make it run faster in the long run, so I'll keep it
-					if(word.length() <= inputLength) {
-						mult = BigInteger.valueOf(getMultValue(word));
-						/*
-							remainder.equals(zero) means this word uses only letters found in and has no more
-							specific letter usages than the input
-						*/
-						if(inputMultDec.remainder(new BigDecimal(mult)) == BigDecimal.ZERO) {
-							anagrams = mult2Strs.get(mult);
-							//Start keeping track of the anagrams of this word if none have been found
-							if(anagrams == null) {
-								anagrams = new ArrayDeque<String>();
+				chrFile = new File(getTxtFile(key));
+				if(chrFile.exists()) {
+					scan = new Scanner(chrFile);
+					while(scan.hasNext()) {
+						word = scan.nextLine();
+						//This'll probably make it run faster in the long run, so I'll keep it
+						if(word.length() <= inputLength) {
+							mult = BigInteger.valueOf(getMultValue(word));
+							/*
+								remainder.equals(zero) means this word uses only letters found in and has no more
+								specific letter usages than the input
+							*/
+							if(inputMultDec.remainder(new BigDecimal(mult)) == BigDecimal.ZERO) {
+								anagrams = mult2Strs.get(mult);
+								//Start keeping track of the anagrams of this word if none have been found
+								if(anagrams == null) {
+									anagrams = new ArrayDeque<String>();
+								}
+								anagrams.add(word);
+								mult2Strs.put(mult,  anagrams);
 							}
-							anagrams.add(word);
-							mult2Strs.put(mult,  anagrams);
 						}
 					}
 				}
 			}
 		}
 		catch(FileNotFoundException e) {
-			System.err.println("FNFE in quicken()");
+//			System.err.println("FNFE in quicken()");
 		}
 		scan.close();
 	}
