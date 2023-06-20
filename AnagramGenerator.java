@@ -16,6 +16,11 @@ import java.util.Scanner;
 //import java.util.Comparator;
 
 /*
+	This was written by Cobaltous over on GitHub. You're free to do with this whatever you want, but keeping my name tucked away somewhere, even in the deepest recesses of your edits would be nice.
+*/
+
+
+/*
 	Leaving this because I thought it was funny in hindsight.
 	
  	Here's an idea:
