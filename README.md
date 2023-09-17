@@ -13,7 +13,7 @@ Optionally, also provide it with:
 
 All of these should fall back to their defaults should something get entered wrong, and it'll also tell you if that happens.
 
-Only begins to run poorly when you give it something using too many (all) unqiue letters of the alphabet, which I'm trying to think of how to fix.
+Only begins to run poorly when you give it something using most of or all of the unqiue letters of the alphabet, which I'm trying to think of how to fix.
 
 This is also mentioned in the code file itself, but just to be extra clear:
 
